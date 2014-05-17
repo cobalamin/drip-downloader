@@ -101,25 +101,29 @@ class DripFM
     return response_code
   end
 
+  # Safe filename without illegal characters
   def safe_filename(filename)
     filename.gsub(/[\x00:\*\?\"<>\|]/, ' ').strip
   end
 
+  # Label directory name
+  def label_dirname(label=@label)
+    safe_filename label["creative"]["service_name"]
+  end
+
   # Returns the zip file name for a release
   def zip_filename(release)
-    label = @label["creative"]["service_name"].strip
     filename = release['slug'][0..40].strip
     
-    safe_filename "#{label}/#{filename}.zip"
+    safe_filename "#{label_dirname}/#{filename}.zip"
   end
 
   # Returns the unpack directory name for a release
   def unpack_dirname(release)
     artist = release["artist"].strip
     title = release["title"].strip
-    label = @label["creative"]["service_name"].strip
 
-    safe_filename "#{label}/#{artist}/#{title}"
+    safe_filename "#{label_dirname}/#{artist}/#{title}"
   end
 
   # The constructor
@@ -181,6 +185,8 @@ class DripFM
 
     label = labels[label_choice.to_i - 1] # substract 1 for array index
     puts "Alright, we're gonna fetch some sick shit from #{label["creative"]["service_name"]}!"
+
+    FileUtils.mkdir_p label_dirname(label)
 
     label
   end
