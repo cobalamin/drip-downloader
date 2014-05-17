@@ -293,7 +293,6 @@ class DripFM
 
       Zip::File.open(filename) do |zipfile|
         zipfile.each do |file|
-          puts "unpacking #{file.name}"
           target_filename = safe_filename("#{dirname}/#{file.name}")
           file.extract target_filename
         end
