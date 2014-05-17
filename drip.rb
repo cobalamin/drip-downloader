@@ -10,7 +10,7 @@ require "zip"
 FORMATS = %w(aiff flac mp3 wav)
 YESNO = %w(y n)
 
-HR = "\n================================================================================\n\n"
+HR = "\n================================================================================\n"
 
 MAX_TRIES = 5
 
@@ -101,21 +101,25 @@ class DripFM
     return response_code
   end
 
+  def safe_filename(filename)
+    filename.gsub(/[\x00:\*\?\"<>\|]/, ' ').strip
+  end
+
   # Returns the zip file name for a release
   def zip_filename(release)
-    label = @label["creative"]["service_name"]
-    filename = release['slug'][0..40]
+    label = @label["creative"]["service_name"].strip
+    filename = release['slug'][0..40].strip
     
-    "#{label}/#{filename}.zip"
+    safe_filename "#{label}/#{filename}.zip"
   end
 
   # Returns the unpack directory name for a release
   def unpack_dirname(release)
-    artist = release["artist"]
-    title = release["title"]
-    label = @label["creative"]["service_name"]
+    artist = release["artist"].strip
+    title = release["title"].strip
+    label = @label["creative"]["service_name"].strip
 
-    "#{label}/#{artist}/#{title}"
+    safe_filename "#{label}/#{artist}/#{title}"
   end
 
   # The constructor
@@ -223,21 +227,20 @@ class DripFM
     end
   end
 
-  def fetch_release(release, trycount=0)
+  def fetch_release(release, trycount=0, chosen_format=nil)
     release_url = "/api/creatives/#{@label['creative']['slug']}/releases/#{release['slug']}"
     formats = JSON.parse(self.class.get(release_url + "/formats").body)
 
-    current_format = @settings[:format]
-
-    if !(formats.include? current_format)
-      puts "\tThis release was not published with your preferred format."
-      current_format = choose "Please choose an available format", formats
+    chosen_format ||= @settings[:format]
+    if !(formats.include? chosen_format)
+      puts "[!] This release was not published with your preferred format."
+      chosen_format = choose "[!] Please choose an available format", formats
     end
 
     url = "/api/users/#{@user['id']}"
     url += "/memberships/#{@label['id']}"
     url += "/download_release?release_id=#{release['id']}"
-    url += "&release_format=#{current_format}"
+    url += "&release_format=#{chosen_format}"
 
     filename = zip_filename(release)
 
@@ -264,13 +267,13 @@ class DripFM
     else
       if trycount < MAX_TRIES
         send_login_request
-        fetch_release(release, trycount + 1)
-      elsif trycount >= 0
-        puts "\tRelease could not be fetched. I'm terribly sorry :("
-        fetch_retry = choose "Wanna retry?", YESNO,
+        fetch_release(release, trycount + 1, chosen_format)
+      else
+        puts "[!] Release could not be fetched. I'm terribly sorry :("
+        fetch_retry = choose "[!] Wanna retry?", YESNO,
           boolean: true
 
-        fetch_release(release, -1) if fetch_retry
+        fetch_release(release, 0, chosen_format) if fetch_retry
       end
     end
 
@@ -290,7 +293,9 @@ class DripFM
 
       Zip::File.open(filename) do |zipfile|
         zipfile.each do |file|
-          file.extract "#{dirname}/#{file.name}"
+          puts "unpacking #{file.name}"
+          target_filename = safe_filename("#{dirname}/#{file.name}")
+          file.extract target_filename
         end
       end
     else
