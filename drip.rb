@@ -7,9 +7,12 @@ require "httparty"
 require "fileutils"
 require "zip"
 
-AVAILABLE_FORMATS = %w(aiff flac mp3 wav)
-CHOICES = %w(y n)
-HR = "================================================================================"
+FORMATS = %w(aiff flac mp3 wav)
+YESNO = %w(y n)
+
+HR = "\n================================================================================\n\n"
+
+MAX_TRIES = 5
 
 class DripFM
   include HTTParty
@@ -63,6 +66,26 @@ class DripFM
     @settings = s
   end
 
+  # HELPERS
+  def choose(prompt, choices, options={})
+    choices_str = choices.join '/'
+    choices_str = options[:choices_str] if options[:choices_str]
+
+    choices_stringified = choices.map { |choice| choice.to_s }
+
+    choice = ""
+    while !(choices_stringified.include? choice) do
+      print "#{prompt} (#{choices_str}): "
+      choice = gets.chomp.downcase
+    end
+
+    if options[:boolean]
+      return choice == "y"
+    else
+      return choice
+    end
+  end
+
   def send_login_request
     login_req = self.class.post "/api/users/login",
       body: @login_data.to_json,
@@ -76,6 +99,23 @@ class DripFM
     end
 
     return response_code
+  end
+
+  # Returns the zip file name for a release
+  def zip_filename(release)
+    label = @label["creative"]["service_name"]
+    filename = release['slug'][0..40]
+    
+    "#{label}/#{filename}.zip"
+  end
+
+  # Returns the unpack directory name for a release
+  def unpack_dirname(release)
+    artist = release["artist"]
+    title = release["title"]
+    label = @label["creative"]["service_name"]
+
+    "#{label}/#{artist}/#{title}"
   end
 
   # The constructor
@@ -96,33 +136,28 @@ class DripFM
     # Greet this dawg!
     puts "Hi, #{@user['firstname']} #{@user['lastname']}! :)\n\n"
 
-    ask_for_settings
-    choose_label
+    # DO THINGS
+    @settings = ask_for_settings
+    puts HR
+    @label = choose_label
+    puts HR
+    @releases = set_releases
+
     grab_releases
   end
 
   # Ask the user for settings for this run
   def ask_for_settings
-    format = ""
-    while !(AVAILABLE_FORMATS.include? format) do
-      print "Which format do you want to download the releases in? (aiff/flac/mp3/wav): "
-      format = gets.chomp.downcase
-    end
-
+    format = choose "Which format do you want to download the releases in?", FORMATS
     puts "\tFLAC is superior, you Apple loving hipster. But I'll grab AIFF for you anyways." if format == "aiff"
 
-    choice = ""
-    while !(CHOICES.include? choice) do
-      print "Do you want to automatically unpack the downloaded releases? (y/n): "
-      choice = gets.chomp.downcase
-    end
+    unpack = choose "Do you want to automatically unpack the downloaded releases?", YESNO,
+      boolean: true
 
-    @settings = { format: format, unpack: (choice == "y") }
+    ask_for_download = choose "Do you want to confirm each release download?", YESNO,
+      boolean: true
 
-    puts "\n"
-    puts HR
-    puts "\n"
-
+    { format: format, unpack: unpack, ask_for_download: ask_for_download }
   end
 
   # Ask the user to choose a label
@@ -134,55 +169,69 @@ class DripFM
       puts "   #{i+1}) #{labels[i]['creative']['service_name']}"
     end
 
-    choices = 1..(labels.length); choice = ""
-    while !(choices.include? choice)
-      print "\nFrom which one do you wanna grab some sick music? (choose by number): "
-      choice = gets.chomp.to_i
-    end
+    puts
 
-    @label = labels[choice-1]
-    puts "\n"
-    puts HR
-    puts "\n"
-    puts "Alright, we're gonna fetch some sick shit from #{@label["creative"]["service_name"]}!"
+    label_choices = (1..labels.length).to_a
+    label_choice = choose "From which one do you wanna grab some sick music?", label_choices,
+      choices_str: "choose by number"
 
+    label = labels[label_choice.to_i - 1] # substract 1 for array index
+    puts "Alright, we're gonna fetch some sick shit from #{label["creative"]["service_name"]}!"
+
+    label
+  end
+
+  # Set the @releases object from the @label object data.
+  def set_releases
     slug = @label["creative"]["slug"]
 
     releases_req = self.class.get "/api/creatives/#{slug}/releases",
       headers: { "Cookie" => @cookies }
 
-    @releases = JSON.parse(releases_req.body)
-    @releases.reject! { |r| !r["unlocked"] }
+    releases = JSON.parse(releases_req.body)
+    releases.reject { |r| !r["unlocked"] }
   end
 
+  # Fetch and save the releases.
   def grab_releases
-    puts "\nLet's see here...\n"
+    puts "Let's see here..."
+    puts
 
     @releases.each do |release|
-      puts "We've got \"#{release['title']}\" by #{release['artist']}."
+      artist = release['artist']
+      title = release['title']
       
-      choice = ""
-      while !(CHOICES.include? choice) do
-        print "Wanna grab that? (y/n) "
-        choice = gets.chomp.downcase
-      end
+      puts "We've got \"#{title}\" by #{artist}."
 
-      if choice == "y"
-        fetch_release(release)
+      dirname = unpack_dirname(release)
+      zipfile = zip_filename(release)
+
+      if File.directory?(dirname) || File.size?(zipfile)
+        puts "It seems you've already got this release. Skipping."
+        puts "========"
+        puts
+      else
+        if @settings[:ask_for_download]
+          fetch_current = choose "Wanna grab that?", YESNO,
+            boolean: true
+        end
+
+        if fetch_current || !@settings[:ask_for_download]
+          fetch_release(release)
+        end
       end
     end
   end
 
-  def fetch_release(release)
+  def fetch_release(release, trycount=0)
     release_url = "/api/creatives/#{@label['creative']['slug']}/releases/#{release['slug']}"
     formats = JSON.parse(self.class.get(release_url + "/formats").body)
 
     current_format = @settings[:format]
 
-    puts "\tThis release was not published with your preferred format." if !(formats.include? current_format)
-    while !(formats.include? current_format)
-      print "\tPlease choose an available format (#{formats.join('/')}): "
-      current_format = gets.chomp
+    if !(formats.include? current_format)
+      puts "\tThis release was not published with your preferred format."
+      current_format = choose "Please choose an available format", formats
     end
 
     url = "/api/users/#{@user['id']}"
@@ -190,54 +239,62 @@ class DripFM
     url += "/download_release?release_id=#{release['id']}"
     url += "&release_format=#{current_format}"
 
-    filename = release['slug'][0..40] + ".zip"
+    filename = zip_filename(release)
 
-    puts "Saving to \"#{filename}\"..."
-    puts "Please stand by while this release is fetched. If your internet sucks ass, just make some tea and wait."
+    if trycount <= 0
+      puts "Saving to \"#{filename}\"..."
+      puts "Please stand by while this release is being fetched..."
+    end
 
-    File.open(filename, "wb") do |f|
-      file_request = self.class.get url,
-        headers: { "Cookie" => @cookies }
+    success = false
 
-      if file_request.code.to_i < 400
+    file_request = self.class.get url,
+      headers: { "Cookie" => @cookies }
+
+    if file_request.code.to_i < 400
+      File.open(filename, "wb") do |f|
         f.write file_request.parsed_response
-        unpack_release(release) if @settings[:unpack]
-        puts "Done. :)"
-        puts "========"
-        puts "\n"
-      else
+      end
+      
+      unpack_release(release) if @settings[:unpack]
+
+      puts "Done. :)"
+      puts "========"
+      puts
+    else
+      if trycount < MAX_TRIES
+        send_login_request
+        fetch_release(release, trycount + 1)
+      elsif trycount >= 0
         puts "\tRelease could not be fetched. I'm terribly sorry :("
+        fetch_retry = choose "Wanna retry?", YESNO,
+          boolean: true
 
-        choice = ""
-        while !(CHOICES.include? choice) do
-          print "Wanna retry? (y/n) "
-          choice = gets.chomp.downcase
-        end
-
-        if(choice == "y")
-          send_login_request
-          fetch_release(release)
-        end
+        fetch_release(release, -1) if fetch_retry
       end
     end
 
-    FileUtils.rm filename, force: true if @settings[:unpack] # remove after unpacking
+    if @settings[:unpack]
+      FileUtils.rm filename, force: true # remove zip after unpacking or if fetching fails
+    end
   end
 
   def unpack_release(release)
     puts "Unpacking #{release['title']}..."
 
-    filename = release['slug'][0..40] + ".zip"
-    artist = release["artist"]
-    title = release["title"]
+    filename = zip_filename(release)
 
-    dirname = "#{artist}/#{title}"
-    FileUtils.mkdir_p(dirname)
+    if File.exist? filename
+      dirname = unpack_dirname(release)
+      FileUtils.mkdir_p(dirname)
 
-    Zip::File.open(filename) do |zipfile|
-      zipfile.each do |file|
-        file.extract "#{dirname}/#{file.name}"
+      Zip::File.open(filename) do |zipfile|
+        zipfile.each do |file|
+          file.extract "#{dirname}/#{file.name}"
+        end
       end
+    else
+      puts "Source zip file could not be found! Release could not be unpacked :("
     end
   end
 
@@ -250,9 +307,8 @@ puts "\t\t    +-------------------------------------+"
 puts "\n"
 puts "       \"Man this is awesome, I can feel the releases raining down on me\""
 puts "           - You, #{Time.now.year}"
-puts "\n"
+
 puts HR
-puts "\n"
 
 puts "Please enter your login info!"
 print "Email: "
@@ -261,3 +317,6 @@ print "Password: "
 password = STDIN.noecho(&:gets).chomp
 
 drip = DripFM.new(email, password)
+
+puts "                                   ALL DONE!"
+puts "                         Thanks for using this tool <3"
