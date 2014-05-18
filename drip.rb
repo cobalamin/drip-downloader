@@ -187,6 +187,7 @@ class DripFM
   # Fetch and save the releases.
   def grab_releases
     puts "Let's see here..."
+    puts "Found #{@releases.count} releases that you can download from this drip."
     puts
 
     @releases.each do |release|
