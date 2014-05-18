@@ -18,53 +18,25 @@ class DripFM
   include HTTParty
   base_uri "https://drip.fm"
 
+  # GETTERS / SETTERS
   # Cookies
-  def cookies
-    @cookies
-  end
-  def cookies=(c)
-    @cookies = c
-  end
-
+  def cookies(); @cookies end
+  def cookies=(c); @cookies = c end
   # Current user
-  def user
-    @user
-  end
-  def user=(u)
-    @user = u
-  end
-
+  def user(); @user end
+  def user=(u); @user = u end
   # Login data
-  def login_data
-    @login_data
-  end
-  def login_data=(ld)
-    @login_data = ld
-  end
-
+  def login_data(); @login_data end
+  def login_data=(ld); @login_data = ld end
   # Chosen label
-  def label
-    @label
-  end
-  def label=(l)
-    @label = l
-  end
-
+  def label(); @label end
+  def label=(l); @label = l end
   # Releases
-  def releases
-    @releases
-  end
-  def releases=(r)
-    @releases = r
-  end
-
+  def releases(); @releases end
+  def releases=(r); @releases = r end
   # Settings
-  def settings
-    @settings
-  end
-  def settings=(s)
-    @settings = s
-  end
+  def settings(); @settings end
+  def settings=(s) @settings = s end
 
   # HELPERS
   def choose(prompt, choices, options={})
