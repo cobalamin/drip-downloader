@@ -75,7 +75,9 @@ class DripFM
 
   # Safe filename without illegal characters
   def safe_filename(filename)
-    filename.gsub(/[\x00:\*\?\"<>\|]/, ' ').strip
+    out = filename.gsub(/[\x00:\*\?\"<>\|]/, ' ').strip
+    out.encode! "US-ASCII", out.encoding, replace: "_"
+    out
   end
 
   # Label directory name
@@ -199,7 +201,14 @@ class DripFM
       dirname = unpack_dirname(release)
       zipfile = zip_filename(release)
 
-      if File.directory?(dirname) || File.size?(zipfile)
+      if (File.size?(zipfile) \
+        or (
+          File.directory?(dirname) \
+          and not (
+            (Dir.entries(dirname) - %w{ . .. Thumbs.db .DS_Store }).empty?
+          )
+        )
+      )
         puts "It seems you've already got this release. Skipping."
         puts "========"
         puts
@@ -280,10 +289,21 @@ class DripFM
       dirname = unpack_dirname(release)
       FileUtils.mkdir_p(dirname)
 
-      Zip::File.open(filename) do |zipfile|
-        zipfile.each do |file|
-          target_filename = safe_filename("#{dirname}/#{file.name}")
-          file.extract target_filename
+      begin
+        Zip::File.open(filename) do |zipfile|
+          zipfile.each do |file|
+            target_filename = safe_filename("#{dirname}/#{file.name}")
+            file.extract target_filename
+          end
+        end
+      rescue Zip::Error => e
+        puts "[!] Something went wrong while unpacking #{release['title']}: \"#{e.message}\""
+
+        retry_unpack = choose "[!] Wanna retry?", YESNO,
+          boolean: true
+
+        if retry_unpack
+          unpack_release(release)
         end
       end
     else
