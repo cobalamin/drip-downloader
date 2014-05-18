@@ -12,7 +12,7 @@ YESNO = %w(y n)
 
 HR = "\n================================================================================\n"
 
-MAX_TRIES = 5
+MAX_TRIES = 10
 
 class DripFM
   include HTTParty
@@ -195,11 +195,21 @@ class DripFM
   def set_releases
     slug = @label["creative"]["slug"]
 
-    releases_req = self.class.get "/api/creatives/#{slug}/releases",
-      headers: { "Cookie" => @cookies }
+    releases = []
+    releases_part_index = 1
+    releases_part = nil
 
-    releases = JSON.parse(releases_req.body)
-    releases.reject { |r| !r["unlocked"] }
+    while releases_part != []
+      releases_req = self.class.get "/api/creatives/#{slug}/releases?page=#{releases_part_index}",
+        headers: { "Cookie" => @cookies }
+
+      releases_part = JSON.parse(releases_req.body)
+
+      releases += releases_part.reject { |r| !r["unlocked"] }
+      releases_part_index += 1
+    end
+
+    releases
   end
 
   # Fetch and save the releases.
