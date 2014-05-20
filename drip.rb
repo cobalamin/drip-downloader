@@ -80,24 +80,33 @@ class DripFM
     out
   end
 
+  def safe_dirname(dirname)
+    out = dirname.gsub(/[\x00:\\\/\*\?\"<>\|]/, ' ').strip
+    out.encode! "US-ASCII", out.encoding, replace: "_"
+    out
+  end
+
   # Label directory name
   def label_dirname(label=@label)
-    safe_filename label["creative"]["service_name"]
+    dirname = label["creative"]["service_name"]
+    dirname = dirname[0..40].strip
+
+    safe_dirname(dirname)
   end
 
   # Returns the zip file name for a release
   def zip_filename(release)
     filename = release['slug'][0..40].strip
     
-    safe_filename "#{label_dirname}/#{filename}.zip"
+    "#{label_dirname}/#{safe_filename(filename)}.zip"
   end
 
   # Returns the unpack directory name for a release
   def unpack_dirname(release)
-    artist = release["artist"].strip
-    title = release["title"].strip
+    artist_dir = safe_dirname release["artist"][0..40].strip
+    title_dir = safe_dirname release["title"][0..40].strip
 
-    safe_filename "#{label_dirname}/#{artist}/#{title}"
+    "#{label_dirname}/#{artist_dir}/#{title_dir}"
   end
 
   # The constructor
@@ -249,8 +258,18 @@ class DripFM
 
     success = false
 
-    file_request = self.class.get url,
-      headers: { "Cookie" => @cookies }
+    begin
+      file_request = self.class.get url,
+        headers: { "Cookie" => @cookies }
+    rescue => e
+      puts "[!] An error occurred while downloading #{release['title']}: \"#{e.message}\""
+
+      fetch_retry = choose "[!] Wanna retry?", YESNO,
+        boolean: true
+
+      fetch_release(release, trycount, chosen_format) if fetch_retry
+      return
+    end
 
     if file_request.code.to_i < 400
       File.open(filename, "wb") do |f|
