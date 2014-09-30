@@ -244,10 +244,9 @@ class DripFM
       chosen_format = choose "[!] Please choose an available format", formats
     end
 
-    url = "/api/users/#{@user['id']}"
-    url += "/memberships/#{@label['id']}"
-    url += "/download_release?release_id=#{release['id']}"
-    url += "&release_format=#{chosen_format}"
+    url = "/api/creatives/#{@label['creative_id']}"
+    url += "/releases/#{release['id']}"
+    url += "/download?release_format=#{chosen_format}"
 
     filename = zip_filename(release)
 

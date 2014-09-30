@@ -3,3 +3,5 @@
 !.gitignore
 !drip.rb
 !Gemfile
+
+Gemfile.lock
