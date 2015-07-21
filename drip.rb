@@ -16,7 +16,7 @@ MAX_TRIES = 10
 
 class DripFM
   include HTTParty
-  base_uri "https://drip.fm"
+  base_uri "https://drip.com"
 
   # GETTERS / SETTERS
   # Cookies
@@ -97,7 +97,7 @@ class DripFM
   # Returns the zip file name for a release
   def zip_filename(release)
     filename = release['slug'][0..40].strip
-    
+
     "#{label_dirname}/#{safe_filename(filename)}.zip"
   end
 
@@ -204,7 +204,7 @@ class DripFM
     @releases.each do |release|
       artist = release['artist']
       title = release['title']
-      
+
       puts "We've got \"#{title}\" by #{artist}."
 
       dirname = unpack_dirname(release)
@@ -274,7 +274,7 @@ class DripFM
       File.open(filename, "wb") do |f|
         f.write file_request.parsed_response
       end
-      
+
       unpack_release(release) if @settings[:unpack]
 
       puts "Done. :)"
