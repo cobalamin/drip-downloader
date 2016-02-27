@@ -96,7 +96,11 @@ class DripFM
 
   # Returns the zip file name for a release
   def zip_filename(release)
-    filename = release['slug'][0..40].strip
+    if release['slug'] && release['slug'].length > 0
+      filename = release['slug'][0..40].strip
+    else
+      filename = release['id'].to_s
+    end
 
     "#{label_dirname}/#{safe_filename(filename)}.zip"
   end
@@ -153,7 +157,7 @@ class DripFM
 
   # Ask the user to choose a label
   def choose_label
-    labels = @user["memberships"]
+    labels = @user["memberships"] + @user["historical_memberships"]
 
     puts "Your subscriptions are:"
     labels.each_index do |i|
@@ -235,7 +239,7 @@ class DripFM
   end
 
   def fetch_release(release, trycount=0, chosen_format=nil)
-    release_url = "/api/creatives/#{@label['creative']['slug']}/releases/#{release['slug']}"
+    release_url = "/api/creatives/#{@label['creative']['slug']}/releases/#{release['id']}"
     formats = JSON.parse(self.class.get(release_url + "/formats").body)
 
     chosen_format ||= @settings[:format]
