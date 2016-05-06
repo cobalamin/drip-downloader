@@ -16,7 +16,7 @@ MAX_TRIES = 10
 
 class DripFM
   include HTTParty
-  base_uri "https://drip.com"
+  base_uri "https://drip.kickstarter.com"
 
   # GETTERS / SETTERS
   # Cookies
