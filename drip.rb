@@ -16,7 +16,7 @@ MAX_TRIES = 10
 
 class DripFM
   include HTTParty
-  base_uri "https://drip.com"
+  base_uri "https://drip.kickstarter.com"
 
   # GETTERS / SETTERS
   # Cookies
@@ -337,7 +337,7 @@ end
 
 ### MAIN CODE
 puts "\t\t    +-------------------------------------+"
-puts "\t\t    | WELCOME TO THE DRIP DOWNLOADER 2014 |"
+puts "\t\t    | WELCOME TO THE DRIP DOWNLOADER #{Time.now.year} |"
 puts "\t\t    +-------------------------------------+"
 puts "\n"
 puts "       \"Man this is awesome, I can feel the releases raining down on me\""
