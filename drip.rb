@@ -337,7 +337,7 @@ end
 
 ### MAIN CODE
 puts "\t\t    +-------------------------------------+"
-puts "\t\t    | WELCOME TO THE DRIP DOWNLOADER 2014 |"
+puts "\t\t    | WELCOME TO THE DRIP DOWNLOADER #{Time.now.year} |"
 puts "\t\t    +-------------------------------------+"
 puts "\n"
 puts "       \"Man this is awesome, I can feel the releases raining down on me\""
