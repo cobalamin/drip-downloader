@@ -8,6 +8,8 @@ require "httparty"
 require "fileutils"
 require "zip"
 
+require 'open-uri'
+
 FORMATS = %w(aiff flac mp3 wav)
 YESNO = %w(y n)
 
@@ -218,7 +220,7 @@ p
       chosen_format = choose "[!] Please choose an available format", formats
     end
 
-    url = "/api/creatives/#{release['creative_id']}"
+    url = "https://drip.kickstarter.com/api/creatives/#{release['creative_id']}"
     url += "/releases/#{release['id']}"
     url += "/download?release_format=#{chosen_format}"
 
@@ -234,8 +236,7 @@ p
 
     success = false
     begin
-      file_request = self.class.get url,
-        headers: { "Cookie" => @cookies }
+      download = open(url, "Cookie" => @cookies)
     rescue => e
       puts "[!] An error occurred while downloading #{release['title']}: \"#{e.message}\". Retrying."
 
@@ -243,24 +244,12 @@ p
       return
     end
 
-    if file_request.code.to_i < 400
-      File.open(filename, "wb") do |f|
-        f.write file_request.parsed_response
-      end
+    IO.copy_stream(download, filename)
+    unpack_release(release) if @settings[:unpack]
 
-      unpack_release(release) if @settings[:unpack]
-
-      puts "Done. :)"
-      puts "========"
-      puts
-    else
-      if trycount < MAX_TRIES
-        send_login_request
-        fetch_release(release, trycount + 1, chosen_format)
-      else
-        puts "[!] Release #{release['title']} could not be fetched. I'm terribly sorry :("
-      end
-    end
+    puts "Done. :)"
+    puts "========"
+    puts
 
     if @settings[:unpack]
       FileUtils.rm filename, force: true # remove zip after unpacking or if fetching fails
