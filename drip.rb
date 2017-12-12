@@ -1,3 +1,4 @@
+# coding: utf-8
 require "io/console"
 
 require "rubygems"
@@ -28,9 +29,6 @@ class DripFM
   # Login data
   def login_data(); @login_data end
   def login_data=(ld); @login_data = ld end
-  # Chosen label
-  def label(); @label end
-  def label=(l); @label = l end
   # Releases
   def releases(); @releases end
   def releases=(r); @releases = r end
@@ -87,8 +85,8 @@ class DripFM
   end
 
   # Label directory name
-  def label_dirname(label=@label)
-    dirname = label["creative"]["service_name"]
+  def label_dirname_for_release(release)
+    dirname = release["creative"]["service_name"]
     dirname = dirname[0..40].strip
 
     safe_dirname(dirname)
@@ -101,16 +99,18 @@ class DripFM
     else
       filename = release['id'].to_s
     end
+    dirname = label_dirname_for_release(release)
 
-    "#{label_dirname}/#{safe_filename(filename)}.zip"
+    "#{dirname}/#{safe_filename(filename)}.zip"
   end
 
   # Returns the unpack directory name for a release
   def unpack_dirname(release)
     artist_dir = safe_dirname release["artist"][0..40].strip
     title_dir = safe_dirname release["title"][0..40].strip
+    dirname = label_dirname_for_release(release)
 
-    "#{label_dirname}/#{artist_dir}/#{title_dir}"
+    "#{dirname}/#{artist_dir}/#{title_dir}"
   end
 
   # The constructor
@@ -134,11 +134,35 @@ class DripFM
     # DO THINGS
     @settings = ask_for_settings
     puts HR
-    @label = choose_label
-    puts HR
     @releases = set_releases
 
     grab_releases
+  end
+
+  # Set the @releases object from all the user's releases.
+  def set_releases
+    releases = []
+    releases_part_index = 1
+    releases_part = nil
+    user_id = @user['id']
+
+    print "\n"
+
+    while releases_part != []
+      print "\rFetching list of releases, page #{releases_part_index}..."
+      releases_req = self.class.get "/api/users/#{user_id}/releases?page=#{releases_part_index}",
+        headers: { "Cookie" => @cookies }
+
+      releases_part = JSON.parse(releases_req.body)
+
+      releases += releases_part.reject { |r| r["unlocked"] == false }
+      releases_part_index += 1
+      break
+    end
+
+    print "\n"
+
+    releases
   end
 
   # Ask the user for settings for this run
@@ -149,62 +173,15 @@ class DripFM
     unpack = choose "Do you want to automatically unpack the downloaded releases?", YESNO,
       boolean: true
 
-    ask_for_download = choose "Do you want to confirm each release download?", YESNO,
-      boolean: true
-
-    { format: format, unpack: unpack, ask_for_download: ask_for_download }
-  end
-
-  # Ask the user to choose a label
-  def choose_label
-    labels = @user["memberships"] + @user["historical_memberships"]
-
-    puts "Your subscriptions are:"
-    labels.each_index do |i|
-      puts "   #{i+1}) #{labels[i]['creative']['service_name']}"
-    end
-
-    puts
-
-    label_choices = (1..labels.length).to_a
-    label_choice = choose "From which one do you wanna grab some sick music?", label_choices,
-      choices_str: "choose by number"
-
-    label = labels[label_choice.to_i - 1] # substract 1 for array index
-    puts "Alright, we're gonna fetch some sick shit from #{label["creative"]["service_name"]}!"
-
-    FileUtils.mkdir_p label_dirname(label)
-
-    label
-  end
-
-  # Set the @releases object from the @label object data.
-  def set_releases
-    slug = @label["creative"]["slug"]
-
-    releases = []
-    releases_part_index = 1
-    releases_part = nil
-
-    while releases_part != []
-      releases_req = self.class.get "/api/creatives/#{slug}/releases?page=#{releases_part_index}",
-        headers: { "Cookie" => @cookies }
-
-      releases_part = JSON.parse(releases_req.body)
-
-      releases += releases_part.reject { |r| !r["unlocked"] }
-      releases_part_index += 1
-    end
-
-    releases
+    { format: format, unpack: unpack }
   end
 
   # Fetch and save the releases.
   def grab_releases
     puts "Let's see here..."
-    puts "Found #{@releases.count} releases that you can download from this drip."
+    puts "Found #{@releases.count} releases that you can download in total before the end times come."
     puts
-
+p
     @releases.each do |release|
       artist = release['artist']
       title = release['title']
@@ -226,20 +203,14 @@ class DripFM
         puts "========"
         puts
       else
-        if @settings[:ask_for_download]
-          fetch_current = choose "Wanna grab that?", YESNO,
-            boolean: true
-        end
-
-        if fetch_current || !@settings[:ask_for_download]
-          fetch_release(release)
-        end
+        fetch_release(release)
       end
     end
   end
 
   def fetch_release(release, trycount=0, chosen_format=nil)
-    release_url = "/api/creatives/#{@label['creative']['slug']}/releases/#{release['id']}"
+    creative_slug = release['creative']['slug']
+    release_url = "/api/creatives/#{creative_slug}/releases/#{release['id']}"
     formats = JSON.parse(self.class.get(release_url + "/formats").body)
 
     chosen_format ||= @settings[:format]
@@ -248,29 +219,28 @@ class DripFM
       chosen_format = choose "[!] Please choose an available format", formats
     end
 
-    url = "/api/creatives/#{@label['creative_id']}"
+    url = "/api/creatives/#{release['creative_id']}"
     url += "/releases/#{release['id']}"
     url += "/download?release_format=#{chosen_format}"
 
+    # create directory to store the file in, if it doesn't exist (mkdir -p)
+    dirname = label_dirname_for_release(release)
+    FileUtils.mkdir_p(dirname)
+    
     filename = zip_filename(release)
 
     if trycount <= 0
-      puts "Saving to \"#{filename}\"..."
-      puts "Please stand by while this release is being fetched..."
+      puts "Saving to \"#{filename}\", please stand by while this release is being fetched..."
     end
 
     success = false
-
     begin
       file_request = self.class.get url,
         headers: { "Cookie" => @cookies }
     rescue => e
-      puts "[!] An error occurred while downloading #{release['title']}: \"#{e.message}\""
+      puts "[!] An error occurred while downloading #{release['title']}: \"#{e.message}\". Retrying."
 
-      fetch_retry = choose "[!] Wanna retry?", YESNO,
-        boolean: true
-
-      fetch_release(release, trycount, chosen_format) if fetch_retry
+      fetch_release(release, trycount, chosen_format)
       return
     end
 
@@ -289,11 +259,7 @@ class DripFM
         send_login_request
         fetch_release(release, trycount + 1, chosen_format)
       else
-        puts "[!] Release could not be fetched. I'm terribly sorry :("
-        fetch_retry = choose "[!] Wanna retry?", YESNO,
-          boolean: true
-
-        fetch_release(release, 0, chosen_format) if fetch_retry
+        puts "[!] Release #{release['title']} could not be fetched. I'm terribly sorry :("
       end
     end
 
@@ -336,12 +302,12 @@ class DripFM
 end
 
 ### MAIN CODE
-puts "\t\t    +-------------------------------------+"
-puts "\t\t    | WELCOME TO THE DRIP DOWNLOADER 2014 |"
-puts "\t\t    +-------------------------------------+"
+puts "               +----------------------------------------------+"
+puts "               | WELCOME TO THE DRIP RAGNARÖK DOWNLOADER 2017 |"
+puts "               +----------------------------------------------+"
 puts "\n"
-puts "       \"Man this is awesome, I can feel the releases raining down on me\""
-puts "           - You, #{Time.now.year}"
+puts "                 \"Skeggǫld! Skálmǫld! Skildir ro Klofnir!\""
+puts "                   - You, #{Time.now.year}"
 
 puts HR
 
