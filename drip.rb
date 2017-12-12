@@ -157,7 +157,6 @@ class DripFM
 
       releases += releases_part.reject { |r| r["unlocked"] == false }
       releases_part_index += 1
-      break
     end
 
     print "\n"
