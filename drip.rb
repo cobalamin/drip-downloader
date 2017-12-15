@@ -237,6 +237,7 @@ p
       download = open(url, "Cookie" => @cookies)
     rescue => e
       puts "An error occurred downloading #{release['title']}: #{e.message}. Skipping."
+      return
     end
 
     IO.copy_stream(download, filename)
