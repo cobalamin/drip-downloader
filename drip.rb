@@ -230,18 +230,13 @@ p
     
     filename = zip_filename(release)
 
-    if trycount <= 0
-      puts "Saving to \"#{filename}\", please stand by while this release is being fetched..."
-    end
+    puts "Saving to \"#{filename}\", please stand by while this release is being fetched..."
 
     success = false
     begin
       download = open(url, "Cookie" => @cookies)
     rescue => e
-      puts "[!] An error occurred while downloading #{release['title']}: \"#{e.message}\". Retrying."
-
-      fetch_release(release, trycount, chosen_format)
-      return
+      puts "An error occurred downloading #{release['title']}: #{e.message}. Skipping."
     end
 
     IO.copy_stream(download, filename)
